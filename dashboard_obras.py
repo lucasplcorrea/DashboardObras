@@ -148,21 +148,10 @@ kpi_ct3.metric("🗓️ Custo Set/25", format_currency_br(custo_set_25))
 kpi_ct4.metric("🗓️ Custo Out/25", format_currency_br(custo_out_25))
 kpi_ct5.metric("💸 Valor Restante a Pagar (Média)", format_currency_br(valor_restante_pagar_media))
 
-st.subheader("Média de Custos por Obra")
-kpi_cm1 = st.columns(1)[0]
-kpi_cm1.metric("🧾 Custo Médio/Obra (Exec.)", format_currency_br(custo_medio_por_obra_exec))
-
 st.markdown("---")
 
 # --- Novos Indicadores de Etapa e Tipologia ---
-col_etapa, col_tipologia = st.columns(2)
-with col_etapa:
-    st.subheader("📊 Obras por Etapa")
-    etapa_counts = df_filtered_projetos["Etapa"].value_counts().reset_index()
-    etapa_counts.columns = ["Etapa", "Número de Obras"]
-    fig_etapa = px.pie(etapa_counts, values="Número de Obras", names="Etapa", title="Distribuição por Etapa",
-                       color_discrete_sequence=px.colors.sequential.Blues_r)
-    st.plotly_chart(fig_etapa, use_container_width=True)
+col_saldo, col_tipologia = st.columns(2)
 
 with col_tipologia:
     st.subheader("📊 Obras por Tipologia")
@@ -171,23 +160,6 @@ with col_tipologia:
     fig_tipologia = px.pie(tipologia_counts, values="Número de Obras", names="Tipologia", title="Distribuição por Tipologia",
                            color_discrete_sequence=px.colors.sequential.Greens_r)
     st.plotly_chart(fig_tipologia, use_container_width=True)
-
-st.markdown("---")
-
-# --- Gráfico 1: Custo Fluxo por Projeto ---
-st.subheader("💰 Custo Fluxo por Projeto")
-grafico1 = px.bar(
-    df_filtered_projetos,
-    x="Projeto",
-    y="Custo Fluxo",
-    labels={"Custo Fluxo": "Custo (R$)"},
-    height=400,
-    color_discrete_sequence=[COLORS["primary"]]
-)
-st.plotly_chart(grafico1, use_container_width=True)
-
-# --- Gráficos de Saldo por Projeto e Média dos Próximos Meses por Projeto (Lado a Lado) ---
-col_saldo, col_media_meses = st.columns(2)
 
 with col_saldo:
     st.subheader("📊 Saldo por Projeto")
@@ -207,25 +179,20 @@ with col_saldo:
     else:
         st.info("Não há dados de Saldo para exibir no gráfico de pizza para os filtros selecionados.")
 
-with col_media_meses:
-    st.subheader("📈 Média dos Próximos Meses por Projeto")
-    media_por_projeto = df_filtered_projetos.groupby("Projeto")["Média dos Próximos Meses"].sum().reset_index()
-    media_por_projeto = media_por_projeto[media_por_projeto["Média dos Próximos Meses"] > 0]
-
-    if not media_por_projeto.empty:
-        grafico_media_meses = px.pie(
-            media_por_projeto,
-            values="Média dos Próximos Meses",
-            names="Projeto",
-            title="Média dos Próximos Meses por Projeto",
-            height=400,
-            color_discrete_sequence=px.colors.sequential.Plasma
-        )
-        st.plotly_chart(grafico_media_meses, use_container_width=True)
-    else:
-        st.info("Não há dados de Média dos Próximos Meses para exibir no gráfico de pizza para os filtros selecionados.")
-
 st.markdown("---")
+
+# --- Gráfico 1: Custo Fluxo por Projeto ---
+st.subheader("💰 Custo Fluxo por Projeto")
+grafico1 = px.bar(
+    df_filtered_projetos,
+    x="Projeto",
+    y="Custo Fluxo",
+    labels={"Custo Fluxo": "Custo (R$)"},
+    height=400,
+    color_discrete_sequence=[COLORS["primary"]]
+)
+st.plotly_chart(grafico1, use_container_width=True)
+
 
 # --- Gráfico 3: Cronograma (Gantt simplificado) ---
 st.subheader("📅 Cronograma das Obras")
