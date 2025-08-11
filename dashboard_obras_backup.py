@@ -1357,23 +1357,31 @@ if REPORTLAB_AVAILABLE:
     st.markdown("---")
 
 # KPIs principais com formatação condicional
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 kpi1.metric("🏗️ Total de Obras", total_obras)
-kpi2.metric("🧾 Custo Fluxo Projetos", format_currency_br(investimento_exec_projetos, show_cents))
-kpi3.metric("💰 Saldo dos Projetos", format_currency_br(saldo_projetos, show_cents))
-kpi4.metric("🏘️ Total de Lotes Usinando", f"{total_lotes:,}".replace(",", "."))
+kpi2.metric(
+    "🧾 Custo Fluxo Projetos", format_currency_br(investimento_exec_projetos, show_cents)
+)
+kpi3.metric(
+    "📈 Média Próximos Meses (Projetos)",
+    format_currency_br(media_proximos_meses_projetos, show_cents),
+)
+kpi4.metric("💰 Saldo Projetos", format_currency_br(saldo_projetos, show_cents))
+kpi5.metric("🏘️ Total de Lotes", f"{total_lotes:,}".replace(",", "."))
 
 st.markdown("---")
 
-st.subheader("Despesas Fixas - Diesel e Mecânica")
+st.subheader("Sumário de Custos Gerais (Despesas Fixas)")
 kpi_cg1, kpi_cg2 = st.columns(2)
-kpi_cg1.metric("🧾 Custos Fixos - Diesel e Mecânica", format_currency_br(custo_geral_exec_proporcional, show_cents))
+kpi_cg1.metric("🧾 Custo Geral Exec. (Fixas - Proporcional)", format_currency_br(custo_geral_exec_proporcional, show_cents))
 if show_cents:
     kpi_cg2.metric("📊 Proporção de Lotes", f"{proporcao_lotes:.1%}")
 
 st.subheader("Indicadores de Custos Totais")
 kpi_ct1, kpi_ct2, kpi_ct3, kpi_ct4, kpi_ct5 = st.columns(5)
-kpi_ct1.metric("💰 Custo Total do Fluxo (Geral)", format_currency_br(custo_total_fluxo_obras, show_cents))
+kpi_ct1.metric(
+    "💰 Custo Total do Fluxo (Geral)", format_currency_br(custo_total_fluxo_obras, show_cents)
+)
 kpi_ct2.metric("🗓️ Custo Ago/25", format_currency_br(custo_ago_25, show_cents))
 kpi_ct3.metric("🗓️ Custo Set/25", format_currency_br(custo_set_25, show_cents))
 kpi_ct4.metric("🗓️ Custo Out/25", format_currency_br(custo_out_25, show_cents))
@@ -1589,6 +1597,53 @@ else:
     st.info("Não há dados de despesas ou empreendimentos para exibir.")
 
 st.markdown("---")
+
+# Gráfico de linhas e pontos para Custos Mensais e Média dos Próximos Meses por Projeto (Sheet 2)
+st.write("**Custos Mensais e Média dos Próximos Meses por Projeto (Segmentado por Tipo de Custo):**")
+
+if not df_sheet2.empty:
+    # Preparar dados para linhas e pontos por tipo de custo
+    monthly_data = []
+    for _, row in df_sheet2.iterrows():
+        projeto = row["Projeto"]
+        tipologia = "Diesel" if "Diesel" in row["Tipologia"] else "Mecânica"
+
+        monthly_data.extend(
+            [
+                {"Projeto": projeto, "Tipo": tipologia, "Mês": "Ago/25", "Valor": row["ago/25"]},
+                {"Projeto": projeto, "Tipo": tipologia, "Mês": "Set/25", "Valor": row["set/25"]},
+                {"Projeto": projeto, "Tipo": tipologia, "Mês": "Out/25", "Valor": row["out/25"]},
+                {
+                    "Projeto": projeto,
+                    "Tipo": tipologia,
+                    "Mês": "Média Próximos",
+                    "Valor": row["Média dos Próximos Meses"],
+                },
+            ]
+        )
+
+    df_monthly_costs = pd.DataFrame(monthly_data)
+
+    fig_monthly_costs_sheet2 = px.line(
+        df_monthly_costs,
+        x="Mês",
+        y="Valor",
+        color="Tipo",
+        markers=True,
+        labels={
+            "Valor": "Valor (R$)",
+            "Tipo": "Tipo de Custo",
+        },
+        color_discrete_sequence=[COLORS["support7"], COLORS["support8"]],
+    )
+    fig_monthly_costs_sheet2.update_traces(
+        mode="lines+markers",
+        line=dict(width=3),
+        marker=dict(size=10),
+    )
+    st.plotly_chart(fig_monthly_costs_sheet2, use_container_width=True)
+else:
+    st.info("Não há dados de custos mensais para exibir.")
 
 # --- Gráfico 4: Custo Fluxo Médio por Empresa ---
 st.subheader("🏢 Custo Fluxo Médio por Empresa Desenvolvedora")
