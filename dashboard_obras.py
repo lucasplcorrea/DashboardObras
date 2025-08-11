@@ -10,6 +10,30 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib
 matplotlib.use("Agg")  # Use non-interactive backend
 
+# Imports para nova geração de PDF com ReportLab
+try:
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+    from reportlab.platypus.frames import Frame
+    from reportlab.platypus.doctemplate import PageTemplate, BaseDocTemplate
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.charts.linecharts import HorizontalLineChart
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
+# Imports para versão premium com Plotly
+try:
+    import kaleido
+    KALEIDO_AVAILABLE = True
+except ImportError:
+    KALEIDO_AVAILABLE = False
+
 st.set_page_config(page_title="Dashboard de Obras", layout="wide")
 
 # Cores da identidade visual
@@ -114,7 +138,7 @@ despesas_fixas = pd.DataFrame(
 # Concatenar despesas fixas com os custos gerais lidos do excel, se houver
 df_custos_gerais = pd.concat([df_custos_gerais_from_excel, despesas_fixas], ignore_index=True)
 
-st.title("📊 Dashboard de Obras - Cadastro Geral")
+st.title("📊 Dashboard de Obras")
 
 # --- Observações Fixas e Filtros (na sidebar para serem mais discretos) ---
 with st.sidebar:
@@ -145,7 +169,7 @@ with col1:
     # Filtro principal: Obras
     obras_options = df_projetos["Projeto"].dropna().unique().tolist()
     selected_obras = st.multiselect(
-        "🏗️ Filtrar por Nome da Obra (Principal)",
+        "🏗️ Filtrar por Obra",
         options=obras_options,
         default=obras_options,
         help="Selecione uma ou mais obras específicas - Filtro Principal",
@@ -161,7 +185,7 @@ with col2:
         cidades_options_filtered_by_obra = df_projetos["Cidade"].dropna().unique().tolist()
 
     selected_cidades = st.multiselect(
-        "🏙️ Filtrar por Cidade (Secundário)",
+        "🏙️ Cidade das Obras (Preenchido Automaticamente)",
         options=cidades_options_filtered_by_obra,
         default=cidades_options_filtered_by_obra,
         help="Selecione uma ou mais cidades",
@@ -207,7 +231,648 @@ saldo_total_acumulado = saldo_projetos
 
 # --- Funcionalidade de Exportação para PDF (Movida para o topo) ---
 st.markdown("---")
-st.subheader("📄 Exportar Dashboard")
+
+# Função para criar PDF completo - "Print da tela" - VERSÃO MELHORADA
+def create_complete_dashboard_pdf():
+    """Cria um PDF completo que replica exatamente o dashboard na tela - versão melhorada"""
+    
+    if not REPORTLAB_AVAILABLE:
+        st.error("ReportLab não está instalado.")
+        return create_pdf_report()
+    
+    buffer = BytesIO()
+    
+    # Configurar documento
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=0.5*inch,
+        leftMargin=0.5*inch,
+        topMargin=0.5*inch,
+        bottomMargin=0.5*inch
+    )
+    
+    # Estilos sem emojis
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, spaceAfter=20, 
+                                textColor=colors.HexColor('#00497A'), alignment=1, fontName='Helvetica-Bold')
+    
+    section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=14, spaceBefore=15, 
+                                  spaceAfter=10, textColor=colors.HexColor('#00497A'), fontName='Helvetica-Bold')
+    
+    subsection_style = ParagraphStyle('Subsection', parent=styles['Heading3'], fontSize=12, spaceBefore=10, 
+                                     spaceAfter=8, textColor=colors.HexColor('#008DDE'), fontName='Helvetica-Bold')
+    
+    story = []
+    
+    # === TÍTULO PRINCIPAL ===
+    story.append(Paragraph("Relatório de Obras", title_style))
+    story.append(Spacer(1, 20))
+    
+    # === OBSERVAÇÕES NO TOPO ===
+    story.append(Paragraph("Observações e Considerações", section_style))
+    
+    observacoes_text = """
+    <b>Considerações do fluxo financeiro:</b><br/>
+    1. Pedras com permuta<br/>
+    2. Tubos com permutas<br/>
+    3. Asfalto com permutas<br/>
+    4. Parcelamentos dos terceiros de acordo com os contratos<br/>
+    5. O Percentual incorrido é do fluxo, e não do orçamento meta<br/>
+    6. Incluído o Diesel no fluxo (Rateado)<br/>
+    7. Incluída a operação da Mecânica no fluxo (Rateado)<br/><br/>
+    
+    <b>Não considerado no fluxo:</b><br/>
+    8. Mão de obra da Abecker<br/>
+    9. Equipamentos<br/><br/>
+    
+    <b>Informações do Relatório:</b><br/>
+    • Relatório gerado em: {data_geracao}<br/>
+    • Filtros aplicados preservados<br/>
+    • Todos os gráficos e dados do dashboard incluídos
+    """.format(data_geracao=pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M'))
+    
+    story.append(Paragraph(observacoes_text, styles['Normal']))
+    story.append(Spacer(1, 20))
+    
+    # === FILTROS APLICADOS ===
+    story.append(Paragraph("Filtros Aplicados", section_style))
+    filtros_text = f"<b>Filtros Aplicados:</b><br/>"
+    filtros_text += f"• <b>Obras Selecionadas:</b> {', '.join(selected_obras[:5])}{'...' if len(selected_obras) > 5 else ''}<br/>"
+    filtros_text += f"• <b>Cidades Selecionadas:</b> {', '.join(selected_cidades[:5])}{'...' if len(selected_cidades) > 5 else ''}"
+    story.append(Paragraph(filtros_text, styles['Normal']))
+    story.append(Spacer(1, 20))
+    
+    # === KPIs PRINCIPAIS ===
+    story.append(Paragraph("Principais Indicadores", section_style))
+    
+    # KPIs em formato de cards
+    kpis_principais = [
+        ['Total de Obras', str(total_obras)],
+        ['Custo Fluxo Projetos', format_currency_br(investimento_exec_projetos, show_cents)],
+        ['Média Próximos Meses (Projetos)', format_currency_br(media_proximos_meses_projetos, show_cents)],
+        ['Saldo Projetos', format_currency_br(saldo_projetos, show_cents)],
+        ['Total de Lotes', f"{total_lotes:,}".replace(",", ".")]
+    ]
+    
+    kpis_table = Table(kpis_principais, colWidths=[4*inch, 3*inch])
+    kpis_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.lightblue),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8)
+    ]))
+    story.append(kpis_table)
+    story.append(Spacer(1, 20))
+    
+    # === CUSTOS GERAIS (DESPESAS FIXAS) ===
+    story.append(Paragraph("Sumário de Custos Gerais (Despesas Fixas)", section_style))
+    
+    custos_gerais = [
+        ['Custo Geral Exec. (Fixas - Proporcional)', format_currency_br(custo_geral_exec_proporcional, show_cents)]
+    ]
+    if show_cents:
+        custos_gerais.append(['Proporção de Lotes', f"{proporcao_lotes:.1%}"])
+    
+    custos_table = Table(custos_gerais, colWidths=[4*inch, 3*inch])
+    custos_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.lightgreen),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8)
+    ]))
+    story.append(custos_table)
+    story.append(Spacer(1, 20))
+    
+    # === INDICADORES TOTAIS ===
+    story.append(Paragraph("Indicadores de Custos Totais", section_style))
+    
+    indicadores_totais = [
+        ['Custo Total do Fluxo (Geral)', format_currency_br(custo_total_fluxo_obras, show_cents)],
+        ['Custo Ago/25', format_currency_br(custo_ago_25, show_cents)],
+        ['Custo Set/25', format_currency_br(custo_set_25, show_cents)],
+        ['Custo Out/25', format_currency_br(custo_out_25, show_cents)],
+        ['Valor Restante a Pagar (Média)', format_currency_br(valor_restante_pagar_media, show_cents)]
+    ]
+    
+    indicadores_table = Table(indicadores_totais, colWidths=[4*inch, 3*inch])
+    indicadores_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.lightyellow),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8)
+    ]))
+    story.append(indicadores_table)
+    story.append(PageBreak())
+    
+    # === GRÁFICOS PRINCIPAIS ===
+    if not df_filtered_projetos.empty:
+        
+        # 1. OBRAS POR TIPOLOGIA
+        story.append(Paragraph("Obras por Tipologia", section_style))
+        tipologia_counts = df_filtered_projetos.groupby("Tipologia").agg({"Projeto": "count", "Lotes": "sum"}).reset_index()
+        tipologia_counts.columns = ["Tipologia", "Número de Obras", "Total de Lotes"]
+        
+        if KALEIDO_AVAILABLE:
+            fig_tipologia = px.pie(
+                tipologia_counts,
+                values="Número de Obras",
+                names="Tipologia", 
+                title="Distribuição por Tipologia",
+                color_discrete_sequence=px.colors.sequential.Greens_r
+            )
+            fig_tipologia.update_layout(
+                title_font_size=14,
+                title_font_color=COLORS["primary"],
+                font=dict(size=10),
+                showlegend=True,
+                height=400
+            )
+            
+            img_bytes = fig_tipologia.to_image(format="png", width=700, height=400, scale=2)
+            img_tipologia = Image(BytesIO(img_bytes), width=6*inch, height=3*inch)
+            story.append(img_tipologia)
+        
+        story.append(Spacer(1, 20))
+        
+        # 2. CUSTO FLUXO POR PROJETO
+        story.append(Paragraph("Custo Fluxo por Projeto", section_style))
+        
+        if KALEIDO_AVAILABLE:
+            df_custo_fluxo = df_filtered_projetos[["Projeto", "Custo Fluxo", "Lotes"]].copy()
+            grafico1 = px.bar(
+                df_custo_fluxo,
+                x="Projeto",
+                y="Custo Fluxo",
+                labels={"Custo Fluxo": "Custo (R$)"},
+                color_discrete_sequence=[COLORS["primary"]],
+                hover_data=["Lotes"]
+            )
+            grafico1.update_layout(
+                title_font_size=14,
+                title_font_color=COLORS["primary"],
+                xaxis_tickangle=-45,
+                font=dict(size=10),
+                height=500
+            )
+            
+            img_bytes = grafico1.to_image(format="png", width=800, height=500, scale=2)
+            img_custo = Image(BytesIO(img_bytes), width=7*inch, height=4*inch)
+            story.append(img_custo)
+        
+        story.append(PageBreak())
+        
+        # 3. CRONOGRAMA DAS OBRAS - CORRIGIDO
+        gantt_data = df_filtered_projetos[["Projeto", "Início Obra", "Fim Obra"]].dropna()
+        if not gantt_data.empty:
+            story.append(Paragraph("Cronograma das Obras", section_style))
+            
+            if KALEIDO_AVAILABLE:
+                # Preparar dados do Gantt de forma mais robusta
+                gantt_list = []
+                for _, row in gantt_data.iterrows():
+                    if pd.notna(row["Início Obra"]) and pd.notna(row["Fim Obra"]):
+                        inicio = pd.to_datetime(row["Início Obra"])
+                        fim = pd.to_datetime(row["Fim Obra"])
+                        
+                        # Garantir que as datas estão em um range válido
+                        if inicio < pd.to_datetime("2024-01-01"):
+                            inicio = pd.to_datetime("2024-01-01")
+                        
+                        gantt_list.append({
+                            'Task': row["Projeto"],
+                            'Start': inicio,
+                            'Finish': fim,
+                            'Resource': row["Projeto"]
+                        })
+                
+                if gantt_list:
+                    df_gantt = pd.DataFrame(gantt_list)
+                    
+                    # Criar gráfico Gantt com plotly
+                    fig_gantt = px.timeline(
+                        df_gantt, 
+                        x_start="Start", 
+                        x_end="Finish",
+                        y="Task",
+                        color="Resource",
+                        title="Cronograma das Obras"
+                    )
+                    
+                    fig_gantt.update_yaxes(autorange="reversed", title="Projetos")
+                    fig_gantt.update_xaxes(title="Período")
+                    fig_gantt.update_layout(
+                        title_font_size=14,
+                        title_font_color=COLORS["primary"],
+                        font=dict(size=9),
+                        height=600,
+                        showlegend=False
+                    )
+                    
+                    img_bytes = fig_gantt.to_image(format="png", width=800, height=600, scale=2)
+                    img_gantt = Image(BytesIO(img_bytes), width=7*inch, height=5*inch)
+                    story.append(img_gantt)
+            
+            story.append(PageBreak())
+    
+    # === DESPESAS RECORRENTES ===
+    if not df_sheet2.empty:
+        story.append(Paragraph("Despesas Recorrentes Detalhadas (Diesel e Mecânica)", section_style))
+        
+        # Gráfico de Custos Mensais da Sheet2 
+        if KALEIDO_AVAILABLE:
+            monthly_data = []
+            for _, row in df_sheet2.iterrows():
+                projeto = row["Projeto"]
+                tipologia = "Diesel" if "Diesel" in str(row.get("Tipologia", "")) else "Mecânica"
+                monthly_data.extend([
+                    {"Projeto": projeto, "Tipo": tipologia, "Mês": "Ago/25", "Valor": row.get("ago/25", 0)},
+                    {"Projeto": projeto, "Tipo": tipologia, "Mês": "Set/25", "Valor": row.get("set/25", 0)},
+                    {"Projeto": projeto, "Tipo": tipologia, "Mês": "Out/25", "Valor": row.get("out/25", 0)},
+                    {"Projeto": projeto, "Tipo": tipologia, "Mês": "Média Próximos", "Valor": row.get("Média dos Próximos Meses", 0)}
+                ])
+            
+            if monthly_data:
+                df_monthly_costs = pd.DataFrame(monthly_data)
+                fig_monthly_costs_sheet2 = px.line(
+                    df_monthly_costs,
+                    x="Mês", 
+                    y="Valor",
+                    color="Tipo",
+                    markers=True,
+                    labels={"Valor": "Valor (R$)", "Tipo": "Tipo de Custo"},
+                    color_discrete_sequence=[COLORS["support7"], COLORS["support8"]],
+                    title="Custos Mensais por Tipo de Despesa"
+                )
+                fig_monthly_costs_sheet2.update_traces(mode="lines+markers", line=dict(width=3), marker=dict(size=10))
+                fig_monthly_costs_sheet2.update_layout(
+                    title_font_size=14,
+                    title_font_color=COLORS["primary"],
+                    font=dict(size=10),
+                    height=400
+                )
+                
+                img_bytes = fig_monthly_costs_sheet2.to_image(format="png", width=800, height=400, scale=2)
+                img_monthly = Image(BytesIO(img_bytes), width=7*inch, height=3*inch)
+                story.append(img_monthly)
+        
+        story.append(PageBreak())
+    
+    # === OUTROS GRÁFICOS ===
+    if not df_filtered_projetos.empty:
+        
+        # Valores a Pagar por Mês
+        story.append(Paragraph("Valores a Pagar por Mês", section_style))
+        if KALEIDO_AVAILABLE:
+            monthly_costs = pd.DataFrame({
+                "Mês": ["Agosto/25", "Setembro/25", "Outubro/25", "Média Próximos Meses"],
+                "Valor": [custo_ago_25, custo_set_25, custo_out_25, valor_restante_pagar_media]
+            })
+            grafico_mensal = px.line(
+                monthly_costs,
+                x="Mês",
+                y="Valor",
+                labels={"Valor": "Valor (R$)"},
+                markers=True,
+                line_shape="linear",
+                title="Evolução dos Valores Mensais"
+            )
+            grafico_mensal.update_traces(
+                line=dict(color=COLORS["support7"], width=3),
+                marker=dict(size=10, color=COLORS["support8"])
+            )
+            grafico_mensal.update_layout(
+                title_font_size=14,
+                title_font_color=COLORS["primary"],
+                font=dict(size=10),
+                height=400
+            )
+            
+            img_bytes = grafico_mensal.to_image(format="png", width=800, height=400, scale=2)
+            img_mensal = Image(BytesIO(img_bytes), width=7*inch, height=3*inch)
+            story.append(img_mensal)
+        
+        # Obras por Cidade
+        story.append(Paragraph("Obras por Cidade", section_style))
+        if KALEIDO_AVAILABLE:
+            obras_por_cidade = df_filtered_projetos["Cidade"].value_counts().reset_index()
+            obras_por_cidade.columns = ["Cidade", "Número de Obras"]
+            grafico_cidade = px.bar(
+                obras_por_cidade,
+                x="Cidade",
+                y="Número de Obras", 
+                labels={"Número de Obras": "Quantidade de Obras"},
+                color_discrete_sequence=[COLORS["support6"]],
+                title="Distribuição por Cidade"
+            )
+            grafico_cidade.update_layout(
+                title_font_size=14,
+                title_font_color=COLORS["primary"],
+                xaxis_tickangle=-45,
+                font=dict(size=10),
+                height=400
+            )
+            
+            img_bytes = grafico_cidade.to_image(format="png", width=800, height=400, scale=2)
+            img_cidade = Image(BytesIO(img_bytes), width=7*inch, height=3*inch)
+            story.append(img_cidade)
+    
+    # Construir PDF
+    doc.build(story)
+    
+    buffer.seek(0)
+    return buffer
+
+# Função para criar PDF do dashboard usando ReportLab (versão profissional)
+def create_professional_pdf_report():
+    """Cria um relatório PDF profissional com ReportLab - melhor formatação e layout"""
+    
+    if not REPORTLAB_AVAILABLE:
+        st.error("ReportLab não está instalada. Usando versão básica do matplotlib.")
+        return create_pdf_report()
+    
+    buffer = BytesIO()
+    
+    # Configurar documento
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=0.5*inch,
+        leftMargin=0.5*inch,
+        topMargin=0.5*inch,
+        bottomMargin=0.5*inch
+    )
+    
+    # Estilos
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        spaceAfter=30,
+        textColor=colors.HexColor('#00497A'),
+        alignment=1  # Center
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=20,
+        textColor=colors.HexColor('#008DDE'),
+        alignment=1
+    )
+    
+    section_style = ParagraphStyle(
+        'SectionHeader',
+        parent=styles['Heading3'],
+        fontSize=14,
+        spaceBefore=20,
+        spaceAfter=10,
+        textColor=colors.HexColor('#00497A'),
+        fontName='Helvetica-Bold'
+    )
+    
+    # Lista de elementos do documento
+    story = []
+    
+    # Título principal
+    story.append(Paragraph("📊 Dashboard de Obras - Relatório Executivo", title_style))
+    story.append(Spacer(1, 20))
+    
+    # Informações dos filtros
+    filtros_text = f"<b>Filtros Aplicados:</b><br/>"
+    filtros_text += f"• Obras: {', '.join(selected_obras[:5])}{'...' if len(selected_obras) > 5 else ''}<br/>"
+    filtros_text += f"• Cidades: {', '.join(selected_cidades[:5])}{'...' if len(selected_cidades) > 5 else ''}"
+    story.append(Paragraph(filtros_text, styles['Normal']))
+    story.append(Spacer(1, 30))
+    
+    # KPIs Principais em tabela estilizada
+    story.append(Paragraph("📊 Principais Indicadores", section_style))
+    
+    kpis_data = [
+        ['Indicador', 'Valor'],
+        ['🏗️ Total de Obras', str(total_obras)],
+        ['💰 Custo Fluxo Projetos', format_currency_br(investimento_exec_projetos, show_cents)],
+        ['🏘️ Total de Lotes', f"{total_lotes:,}".replace(",", ".")],
+        ['💸 Saldo Projetos', format_currency_br(saldo_projetos, show_cents)],
+        ['📈 Média Próximos Meses', format_currency_br(media_proximos_meses_projetos, show_cents)],
+        ['⚙️ Custo Geral (Proporcional)', format_currency_br(custo_geral_exec_proporcional, show_cents)]
+    ]
+    
+    kpis_table = Table(kpis_data, colWidths=[3*inch, 2.5*inch])
+    kpis_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#00497A')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+    ]))
+    
+    story.append(kpis_table)
+    story.append(Spacer(1, 30))
+    
+    # Indicadores de Custos Mensais
+    story.append(Paragraph("💰 Valores Mensais", section_style))
+    
+    custos_mensais_data = [
+        ['Mês', 'Valor'],
+        ['Agosto/25', format_currency_br(custo_ago_25, show_cents)],
+        ['Setembro/25', format_currency_br(custo_set_25, show_cents)],
+        ['Outubro/25', format_currency_br(custo_out_25, show_cents)],
+        ['Custo Total do Fluxo', format_currency_br(custo_total_fluxo_obras, show_cents)]
+    ]
+    
+    custos_table = Table(custos_mensais_data, colWidths=[2.5*inch, 3*inch])
+    custos_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#008DDE')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.lightblue),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightcyan])
+    ]))
+    
+    story.append(custos_table)
+    story.append(PageBreak())
+    
+    # Tabela detalhada das obras
+    if not df_filtered_projetos.empty:
+        story.append(Paragraph("📋 Tabela Detalhada das Obras", section_style))
+        
+        # Preparar dados da tabela
+        table_columns = ['Projeto', 'Cidade', 'Tipologia', 'Custo Fluxo', 'Saldo', 'Lotes']
+        existing_columns = [col for col in table_columns if col in df_filtered_projetos.columns]
+        
+        # Cabeçalho da tabela
+        table_data = [existing_columns]
+        
+        # Dados das obras
+        for _, row in df_filtered_projetos.iterrows():
+            row_data = []
+            for col in existing_columns:
+                if col in ['Custo Fluxo', 'Saldo']:
+                    row_data.append(format_currency_br(row[col], False))
+                elif col == 'Lotes':
+                    row_data.append(f"{row[col]:,.0f}".replace(",", "."))
+                else:
+                    row_data.append(str(row[col])[:20] + "..." if len(str(row[col])) > 20 else str(row[col]))
+            table_data.append(row_data)
+        
+        # Dividir tabela em páginas se necessário
+        rows_per_page = 20
+        for page_num, start_idx in enumerate(range(0, len(table_data)-1, rows_per_page)):
+            end_idx = min(start_idx + rows_per_page, len(table_data)-1)
+            
+            if page_num > 0:
+                story.append(PageBreak())
+                story.append(Paragraph(f"📋 Tabela Detalhada das Obras (Continuação - Página {page_num + 1})", section_style))
+            
+            page_data = [table_data[0]] + table_data[start_idx+1:end_idx+1]
+            
+            obras_table = Table(page_data, repeatRows=1)
+            obras_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+            ]))
+            
+            story.append(obras_table)
+            story.append(Spacer(1, 20))
+    
+    # Gráfico de Custo Fluxo usando ReportLab Charts
+    if not df_filtered_projetos.empty and len(df_filtered_projetos) <= 10:
+        story.append(PageBreak())
+        story.append(Paragraph("📊 Custo Fluxo por Projeto", section_style))
+        
+        # Criar gráfico de barras com ReportLab
+        drawing = Drawing(400, 300)
+        
+        chart = VerticalBarChart()
+        chart.x = 50
+        chart.y = 50
+        chart.height = 200
+        chart.width = 300
+        
+        # Dados do gráfico
+        projetos_nomes = df_filtered_projetos['Projeto'].tolist()[:10]  # Máximo 10 projetos
+        projetos_valores = df_filtered_projetos['Custo Fluxo'].tolist()[:10]
+        
+        chart.data = [projetos_valores]
+        chart.categoryAxis.categoryNames = [nome[:15] + "..." if len(nome) > 15 else nome for nome in projetos_nomes]
+        chart.categoryAxis.labels.angle = 45
+        chart.categoryAxis.labels.fontSize = 8
+        chart.valueAxis.valueMin = 0
+        chart.valueAxis.valueMax = max(projetos_valores) * 1.1
+        
+        # Cores
+        chart.bars[0].fillColor = colors.HexColor('#00497A')
+        chart.bars[0].strokeColor = colors.HexColor('#00497A')
+        
+        drawing.add(chart)
+        story.append(drawing)
+        story.append(Spacer(1, 30))
+    
+    # Tabela da Sheet2 (Despesas Fixas)
+    if not df_sheet2.empty:
+        story.append(PageBreak())
+        story.append(Paragraph("⛽ Despesas Fixas Detalhadas", section_style))
+        
+        sheet2_data = [['Projeto', 'Tipologia', 'Custo Fluxo', 'Ago/25', 'Set/25', 'Out/25']]
+        
+        for _, row in df_sheet2.iterrows():
+            sheet2_data.append([
+                str(row.get('Projeto', ''))[:20],
+                str(row.get('Tipologia', ''))[:15],
+                format_currency_br(row.get('Custo Fluxo', 0), False),
+                format_currency_br(row.get('ago/25', 0), False),
+                format_currency_br(row.get('set/25', 0), False),
+                format_currency_br(row.get('out/25', 0), False)
+            ])
+        
+        sheet2_table = Table(sheet2_data, repeatRows=1)
+        sheet2_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#70AD47')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgreen])
+        ]))
+        
+        story.append(sheet2_table)
+    
+    # Rodapé com informações adicionais
+    story.append(PageBreak())
+    story.append(Paragraph("📝 Observações e Considerações", section_style))
+    
+    observacoes_text = """
+    <b>Considerações do fluxo financeiro:</b><br/>
+    1. Pedras com permuta<br/>
+    2. Tubos com permutas<br/>
+    3. Asfalto com permutas<br/>
+    4. Parcelamentos dos terceiros de acordo com os contratos<br/>
+    5. O Percentual incorrido é do fluxo, e não do orçamento meta<br/>
+    6. Incluído o Diesel no fluxo (Rateado)<br/>
+    7. Incluída a operação da Mecânica no fluxo (Rateado)<br/><br/>
+    
+    <b>Não considerado no fluxo:</b><br/>
+    8. Mão de obra da Abecker<br/>
+    9. Equipamentos
+    """
+    
+    story.append(Paragraph(observacoes_text, styles['Normal']))
+    
+    # Informações de geração do relatório
+    story.append(Spacer(1, 30))
+    footer_text = f"<i>Relatório gerado em {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')}</i>"
+    story.append(Paragraph(footer_text, styles['Italic']))
+    
+    # Construir PDF
+    doc.build(story)
+    
+    buffer.seek(0)
+    return buffer
 
 # Função para criar PDF do dashboard (melhorada para incluir todos os dados)
 def create_pdf_report():
@@ -662,23 +1327,33 @@ def create_pdf_report():
     buffer.seek(0)
     return buffer
 
-if st.button("📥 Exportar Dashboard para PDF"):
-    try:
-        with st.spinner("Gerando relatório PDF..."):
-            pdf_buffer = create_pdf_report()
+    buffer.seek(0)
+    return buffer
 
-            st.download_button(
-                label="📥 Download do Relatório PDF",
-                data=pdf_buffer.getvalue(),
-                file_name=f"dashboard_obras_relatorio_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                mime="application/pdf",
-            )
-            st.success("Relatório PDF gerado com sucesso!")
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF: {str(e)}")
-        st.info("Funcionalidade de exportação para PDF em desenvolvimento. Tente novamente mais tarde.")
+# Interface para exportação de PDF - Dashboard Completo
+st.markdown("### 📁 Exportar Relatório PDF")
 
-st.markdown("---")
+if REPORTLAB_AVAILABLE:
+    col_pdf, col_info = st.columns([2, 1])
+    
+    with col_pdf:
+        if st.button("📄 Gerar Relatório PDF", help="Relatório completo do dashboard", type="primary"):
+            try:
+                with st.spinner("Gerando relatório PDF..."):
+                    pdf_buffer = create_complete_dashboard_pdf()
+                    
+                    st.download_button(
+                        label="⬇️ Download Relatório PDF",
+                        data=pdf_buffer.getvalue(),
+                        file_name=f"dashboard_obras_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf",
+                        key="pdf_report"
+                    )
+                    st.success("✅ Relatório PDF gerado com sucesso!")
+            except Exception as e:
+                st.error(f"❌ Erro ao gerar PDF: {str(e)}")
+    
+    st.markdown("---")
 
 # KPIs principais com formatação condicional
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
