@@ -209,96 +209,74 @@ saldo_total_acumulado = saldo_projetos
 st.markdown("---")
 st.subheader("📄 Exportar Dashboard")
 
-# Função para criar PDF do dashboard (movida para dentro do escopo)
+# Função para criar PDF do dashboard (melhorada para incluir todos os dados)
 def create_pdf_report():
-    """Cria um relatório PDF com os principais gráficos e dados do dashboard"""
+    """Cria um relatório PDF completo com todos os dados do dashboard respeitando os filtros"""
 
     # Configurar matplotlib para português
     plt.rcParams["font.family"] = "DejaVu Sans"
+    plt.rcParams["font.size"] = 8
 
     buffer = BytesIO()
 
     with PdfPages(buffer) as pdf:
-        # Página 1: KPIs principais
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(11, 8))
-        fig.suptitle("Dashboard de Obras - Relatório Executivo", fontsize=16, fontweight="bold")
+        # Página 1: KPIs Principais e Filtros Aplicados
+        fig = plt.figure(figsize=(11, 8))
+        fig.suptitle("Dashboard de Obras - Relatório Completo", fontsize=16, fontweight="bold")
+        
+        # Informações dos filtros aplicados
+        gs = fig.add_gridspec(4, 3, height_ratios=[0.5, 1, 1, 0.3])
+        
+        # Filtros aplicados
+        ax_filtros = fig.add_subplot(gs[0, :])
+        ax_filtros.axis("off")
+        filtros_text = f"Filtros Aplicados:\nObras: {', '.join(selected_obras[:3])}{'...' if len(selected_obras) > 3 else ''}\n"
+        filtros_text += f"Cidades: {', '.join(selected_cidades[:3])}{'...' if len(selected_cidades) > 3 else ''}"
+        ax_filtros.text(0.5, 0.5, filtros_text, ha="center", va="center", fontsize=10, 
+                       bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
 
-        # KPI 1: Total de Obras
-        ax1.text(
-            0.5,
-            0.5,
-            f"Total de Obras\n{len(df_filtered_projetos)}",
-            ha="center",
-            va="center",
-            fontsize=20,
-            fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue"),
-        )
-        ax1.set_xlim(0, 1)
-        ax1.set_ylim(0, 1)
-        ax1.axis("off")
+        # KPIs principais (2x3 grid)
+        kpis_data = [
+            ("Total de Obras", total_obras, "lightblue"),
+            ("Custo Fluxo Projetos", format_currency_br(investimento_exec_projetos, show_cents), "lightgreen"),
+            ("Total de Lotes", f"{total_lotes:,}".replace(",", "."), "lightyellow"),
+            ("Saldo Projetos", format_currency_br(saldo_projetos, show_cents), "lightcoral"),
+            ("Média Próximos Meses", format_currency_br(media_proximos_meses_projetos, show_cents), "lightpink"),
+            ("Custo Geral (Proporcional)", format_currency_br(custo_geral_exec_proporcional, show_cents), "lightcyan")
+        ]
+        
+        for i, (label, valor, cor) in enumerate(kpis_data):
+            row, col = divmod(i, 3)
+            ax = fig.add_subplot(gs[row + 1, col])
+            ax.text(0.5, 0.5, f"{label}\n{valor}", ha="center", va="center", fontsize=12,
+                    fontweight="bold", bbox=dict(boxstyle="round,pad=0.3", facecolor=cor))
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis("off")
 
-        # KPI 2: Custo Total
-        custo_total = df_filtered_projetos["Custo Fluxo"].sum()
-        ax2.text(
-            0.5,
-            0.5,
-            f"Custo Total\n{format_currency_br(custo_total, show_cents)}",
-            ha="center",
-            va="center",
-            fontsize=16,
-            fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen"),
-        )
-        ax2.set_xlim(0, 1)
-        ax2.set_ylim(0, 1)
-        ax2.axis("off")
-
-        # KPI 3: Total de Lotes
-        total_lotes_pdf = df_filtered_projetos["Lotes"].sum()
-        ax3.text(
-            0.5,
-            0.5,
-            f"Total de Lotes\n{total_lotes_pdf:,}".replace(",", "."),
-            ha="center",
-            va="center",
-            fontsize=18,
-            fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow"),
-        )
-        ax3.set_xlim(0, 1)
-        ax3.set_ylim(0, 1)
-        ax3.axis("off")
-
-        # KPI 4: Saldo
-        saldo_total = df_filtered_projetos["Saldo"].sum()
-        ax4.text(
-            0.5,
-            0.5,
-            f"Saldo Total\n{format_currency_br(saldo_total, show_cents)}",
-            ha="center",
-            va="center",
-            fontsize=16,
-            fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral"),
-        )
-        ax4.set_xlim(0, 1)
-        ax4.set_ylim(0, 1)
-        ax4.axis("off")
+        # Indicadores de custos totais na parte inferior
+        ax_custos_totais = fig.add_subplot(gs[3, :])
+        ax_custos_totais.axis("off")
+        custos_text = f"Indicadores Totais: Custo Total Fluxo: {format_currency_br(custo_total_fluxo_obras, show_cents)} | "
+        custos_text += f"Ago/25: {format_currency_br(custo_ago_25, show_cents)} | "
+        custos_text += f"Set/25: {format_currency_br(custo_set_25, show_cents)} | "
+        custos_text += f"Out/25: {format_currency_br(custo_out_25, show_cents)}"
+        ax_custos_totais.text(0.5, 0.5, custos_text, ha="center", va="center", fontsize=9,
+                            bbox=dict(boxstyle="round,pad=0.3", facecolor="lavender"))
 
         plt.tight_layout()
         pdf.savefig(fig, bbox_inches="tight")
         plt.close()
 
-        # Página 2: Gráfico de Custo por Projeto
+        # Página 2: Custo Fluxo por Projeto
         if not df_filtered_projetos.empty:
             fig, ax = plt.subplots(figsize=(11, 8))
             projetos = df_filtered_projetos["Projeto"].tolist()
             custos = df_filtered_projetos["Custo Fluxo"].tolist()
 
             bars = ax.bar(range(len(projetos)), custos, color=COLORS["primary"])
-            ax.set_xlabel("Projetos")
-            ax.set_ylabel("Custo (R$)")
+            ax.set_xlabel("Projetos", fontweight="bold")
+            ax.set_ylabel("Custo (R$)", fontweight="bold")
             ax.set_title("Custo Fluxo por Projeto", fontsize=14, fontweight="bold")
             ax.set_xticks(range(len(projetos)))
             ax.set_xticklabels(projetos, rotation=45, ha="right")
@@ -306,73 +284,380 @@ def create_pdf_report():
             # Adicionar valores nas barras
             for i, bar in enumerate(bars):
                 height = bar.get_height()
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2.0,
-                    height,
-                    f"R$ {height:,.0f}".replace(",", "."),
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
-                )
+                ax.text(bar.get_x() + bar.get_width() / 2.0, height,
+                        f"R$ {height:,.0f}".replace(",", "."),
+                        ha="center", va="bottom", fontsize=8)
 
+            # Formatação do eixo y
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"R$ {x:,.0f}".replace(",", ".")))
+            plt.xticks(rotation=45, ha="right")
             plt.tight_layout()
             pdf.savefig(fig, bbox_inches="tight")
             plt.close()
 
-        # Página 3: Distribuição por Tipologia
+        # Página 3: Distribuição por Tipologia e Saldo
         if not df_filtered_projetos.empty:
-            fig, ax = plt.subplots(figsize=(11, 8))
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 8))
+            fig.suptitle("Distribuição por Tipologia e Saldo por Projeto", fontsize=14, fontweight="bold")
+
+            # Gráfico de tipologia
             tipologia_counts = df_filtered_projetos["Tipologia"].value_counts()
-
             if not tipologia_counts.empty:
-                wedges, texts, autotexts = ax.pie(
-                    tipologia_counts.values,
-                    labels=tipologia_counts.index,
-                    autopct="%1.1f%%",
-                    startangle=90,
-                )
-                ax.set_title("Distribuição de Obras por Tipologia", fontsize=14, fontweight="bold")
+                wedges, texts, autotexts = ax1.pie(tipologia_counts.values, labels=tipologia_counts.index,
+                                                  autopct="%1.1f%%", startangle=90)
+                ax1.set_title("Obras por Tipologia")
+
+            # Gráfico de saldo por projeto
+            saldo_por_projeto = df_filtered_projetos.groupby("Projeto")["Saldo"].sum().reset_index()
+            saldo_por_projeto = saldo_por_projeto[saldo_por_projeto["Saldo"] > 0]
+            
+            if not saldo_por_projeto.empty:
+                wedges, texts, autotexts = ax2.pie(saldo_por_projeto["Saldo"], 
+                                                  labels=saldo_por_projeto["Projeto"],
+                                                  autopct="%1.1f%%", startangle=90)
+                ax2.set_title("Saldo por Projeto")
+            else:
+                ax2.text(0.5, 0.5, "Não há dados de saldo\npara exibir", ha="center", va="center")
+                ax2.set_xlim(0, 1)
+                ax2.set_ylim(0, 1)
 
             plt.tight_layout()
             pdf.savefig(fig, bbox_inches="tight")
             plt.close()
 
-        # Página 4: Tabela resumo
+        # Página 4: Cronograma (Gantt) das Obras
         if not df_filtered_projetos.empty:
+            gantt_data = df_filtered_projetos[["Projeto", "Início Obra", "Fim Obra"]].dropna()
+            if not gantt_data.empty:
+                fig, ax = plt.subplots(figsize=(11, 8))
+                
+                # Filtrar para começar a visualização em 2024
+                gantt_data_filtered = gantt_data.copy()
+                gantt_data_filtered.loc[gantt_data_filtered["Início Obra"] < "2024-01-01", "Início Obra"] = pd.to_datetime("2024-01-01")
+
+                for i, (_, row) in enumerate(gantt_data_filtered.iterrows()):
+                    start_date = row["Início Obra"]
+                    end_date = row["Fim Obra"]
+                    ax.barh(i, (end_date - start_date).days, left=start_date, 
+                           color=ALL_GANTT_COLORS[i % len(ALL_GANTT_COLORS)], alpha=0.7)
+
+                ax.set_yticks(range(len(gantt_data_filtered)))
+                ax.set_yticklabels(gantt_data_filtered["Projeto"], fontsize=8)
+                ax.set_xlabel("Timeline", fontweight="bold")
+                ax.set_title("Cronograma das Obras", fontsize=14, fontweight="bold")
+                
+                # Formatação das datas
+                import matplotlib.dates as mdates
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%Y'))
+                ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+                plt.xticks(rotation=45)
+                
+                plt.tight_layout()
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close()
+
+        # Página 5: Valores Mensais e Despesas Fixas
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8))
+        fig.suptitle("Valores Mensais e Despesas Fixas", fontsize=14, fontweight="bold")
+
+        # Gráfico de valores mensais
+        meses = ["Ago/25", "Set/25", "Out/25", "Média Próximos"]
+        valores_mensais = [custo_ago_25, custo_set_25, custo_out_25, valor_restante_pagar_media]
+        
+        ax1.plot(meses, valores_mensais, marker='o', linewidth=3, markersize=8, color=COLORS["support7"])
+        ax1.set_title("Valores a Pagar por Mês")
+        ax1.set_ylabel("Valor (R$)")
+        ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"R$ {x:,.0f}".replace(",", ".")))
+        
+        # Adicionar valores nos pontos
+        for i, valor in enumerate(valores_mensais):
+            ax1.annotate(format_currency_br(valor, False), (i, valor), 
+                        textcoords="offset points", xytext=(0,10), ha='center')
+
+        # Gráfico de despesas fixas (se houver dados da Sheet2)
+        if not df_sheet2.empty:
+            diesel_data = df_sheet2[df_sheet2["Tipologia"].str.contains("Diesel", na=False)]
+            mecanica_data = df_sheet2[df_sheet2["Tipologia"].str.contains("Mecanica", na=False)]
+            
+            despesas_labels = []
+            despesas_valores = []
+            
+            if not diesel_data.empty:
+                despesas_labels.append("Diesel")
+                despesas_valores.append(diesel_data["Custo Fluxo"].iloc[0])
+            
+            if not mecanica_data.empty:
+                despesas_labels.append("Mecânica")
+                despesas_valores.append(mecanica_data["Custo Fluxo"].iloc[0])
+            
+            if despesas_labels:
+                ax2.bar(despesas_labels, despesas_valores, color=[COLORS["support7"], COLORS["support8"]])
+                ax2.set_title("Despesas Fixas (Diesel e Mecânica)")
+                ax2.set_ylabel("Valor (R$)")
+                ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"R$ {x:,.0f}".replace(",", ".")))
+                
+                # Adicionar valores nas barras
+                for i, valor in enumerate(despesas_valores):
+                    ax2.text(i, valor, format_currency_br(valor, False), 
+                           ha="center", va="bottom", fontweight="bold")
+        else:
+            ax2.text(0.5, 0.5, "Não há dados de despesas fixas\npara exibir", 
+                    ha="center", va="center", transform=ax2.transAxes)
+
+        plt.tight_layout()
+        pdf.savefig(fig, bbox_inches="tight")
+        plt.close()
+
+        # Página 6: Obras por Cidade e Empresa
+        if not df_filtered_projetos.empty:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8))
+            fig.suptitle("Distribuição por Cidade e Empresa", fontsize=14, fontweight="bold")
+
+            # Obras por cidade
+            obras_por_cidade = df_filtered_projetos["Cidade"].value_counts()
+            if not obras_por_cidade.empty:
+                ax1.bar(obras_por_cidade.index, obras_por_cidade.values, color=COLORS["support6"])
+                ax1.set_title("Número de Obras por Cidade")
+                ax1.set_xlabel("Cidade")
+                ax1.set_ylabel("Número de Obras")
+                plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
+
+            # Custo médio por empresa
+            if "Empresa desenvolvedora" in df_filtered_projetos.columns:
+                empresa_custo = df_filtered_projetos.groupby("Empresa desenvolvedora")["Custo Fluxo"].mean()
+                if not empresa_custo.empty:
+                    ax2.bar(empresa_custo.index, empresa_custo.values, color=COLORS["support5"])
+                    ax2.set_title("Custo Fluxo Médio por Empresa Desenvolvedora")
+                    ax2.set_xlabel("Empresa")
+                    ax2.set_ylabel("Custo Médio (R$)")
+                    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"R$ {x:,.0f}".replace(",", ".")))
+                    plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
+
+            plt.tight_layout()
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close()
+
+        # Página 7: Tabela Detalhada das Obras (Principal)
+        if not df_filtered_projetos.empty:
+            # Dividir a tabela em páginas se necessário
+            colunas_tabela = ["Projeto", "Cidade", "Tipologia", "Custo Fluxo", "Saldo", "Lotes", "% Avanço Físico"]
+            
+            # Filtrar apenas colunas que existem
+            colunas_existentes = [col for col in colunas_tabela if col in df_filtered_projetos.columns]
+            
+            df_tabela = df_filtered_projetos[colunas_existentes].copy()
+            
+            # Formatação das colunas monetárias
+            for col in ["Custo Fluxo", "Saldo"]:
+                if col in df_tabela.columns:
+                    df_tabela[col] = df_tabela[col].apply(lambda x: format_currency_br(x, False))
+            
+            # Formatação da coluna de lotes
+            if "Lotes" in df_tabela.columns:
+                df_tabela["Lotes"] = df_tabela["Lotes"].apply(lambda x: f"{x:,}".replace(",", "."))
+            
+            # Formatação da coluna de avanço físico
+            if "% Avanço Físico" in df_tabela.columns:
+                df_tabela["% Avanço Físico"] = df_tabela["% Avanço Físico"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+
+            # Dividir em chunks de 25 linhas
+            chunk_size = 25
+            for chunk_num, start_idx in enumerate(range(0, len(df_tabela), chunk_size)):
+                end_idx = min(start_idx + chunk_size, len(df_tabela))
+                chunk_data = df_tabela.iloc[start_idx:end_idx]
+                
+                fig, ax = plt.subplots(figsize=(11, 8))
+                ax.axis("tight")
+                ax.axis("off")
+
+                table = ax.table(cellText=chunk_data.values, colLabels=chunk_data.columns,
+                               cellLoc="center", loc="center")
+                
+                table.auto_set_font_size(False)
+                table.set_fontsize(7)
+                table.scale(1.0, 1.2)
+                
+                # Colorir cabeçalho
+                for i in range(len(chunk_data.columns)):
+                    table[(0, i)].set_facecolor('#4472C4')
+                    table[(0, i)].set_text_props(weight='bold', color='white')
+
+                titulo_pagina = f"Tabela Detalhada das Obras - Página {chunk_num + 1}"
+                if len(df_tabela) > chunk_size:
+                    titulo_pagina += f" (Linhas {start_idx + 1} a {end_idx})"
+                
+                ax.set_title(titulo_pagina, fontsize=12, fontweight="bold", pad=20)
+
+                plt.tight_layout()
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close()
+
+        # Página 8: Tabela de Despesas Fixas (Sheet2)
+        if not df_sheet2.empty:
             fig, ax = plt.subplots(figsize=(11, 8))
             ax.axis("tight")
             ax.axis("off")
 
-            # Criar tabela resumo
-            resumo_data = []
-            for _, row in df_filtered_projetos.iterrows():
-                resumo_data.append(
-                    [
-                        row["Projeto"],
-                        row["Cidade"],
-                        row["Tipologia"],
-                        f"{row['Lotes']:,}".replace(",", "."),
-                        format_currency_br(row["Custo Fluxo"], True),
-                    ]
-                )
+            # Preparar dados da Sheet2 para exibição
+            df_sheet2_display = df_sheet2.copy()
+            
+            # Formatação das colunas monetárias da Sheet2
+            cols_monetarias_sheet2 = ["Custo Fluxo", "ago/25", "set/25", "out/25", "Média dos Próximos Meses"]
+            for col in cols_monetarias_sheet2:
+                if col in df_sheet2_display.columns:
+                    df_sheet2_display[col] = df_sheet2_display[col].apply(lambda x: format_currency_br(x, False))
 
-            if resumo_data:
-                table = ax.table(
-                    cellText=resumo_data,
-                    colLabels=["Projeto", "Cidade", "Tipologia", "Lotes", "Custo Fluxo"],
-                    cellLoc="center",
-                    loc="center",
-                )
-
+            # Selecionar colunas mais relevantes para o PDF
+            colunas_sheet2 = ["Projeto", "Tipologia", "Custo Fluxo", "ago/25", "set/25", "out/25"]
+            colunas_sheet2_existentes = [col for col in colunas_sheet2 if col in df_sheet2_display.columns]
+            
+            if colunas_sheet2_existentes:
+                df_sheet2_filtered = df_sheet2_display[colunas_sheet2_existentes]
+                
+                table = ax.table(cellText=df_sheet2_filtered.values, 
+                               colLabels=df_sheet2_filtered.columns,
+                               cellLoc="center", loc="center")
+                
                 table.auto_set_font_size(False)
-                table.set_fontsize(8)
+                table.set_fontsize(9)
                 table.scale(1.2, 1.5)
+                
+                # Colorir cabeçalho
+                for i in range(len(df_sheet2_filtered.columns)):
+                    table[(0, i)].set_facecolor('#70AD47')
+                    table[(0, i)].set_text_props(weight='bold', color='white')
 
-            ax.set_title("Resumo Detalhado das Obras", fontsize=14, fontweight="bold", pad=20)
+            ax.set_title("Despesas Fixas Detalhadas (Diesel e Mecânica)", 
+                        fontsize=12, fontweight="bold", pad=20)
 
             plt.tight_layout()
             pdf.savefig(fig, bbox_inches="tight")
             plt.close()
+
+        # Página 9: Estatísticas Complementares
+        if not df_filtered_projetos.empty:
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(11, 8))
+            fig.suptitle("Estatísticas Complementares", fontsize=14, fontweight="bold")
+
+            # Percentual de avanço físico por projeto
+            if "% Avanço Físico" in df_filtered_projetos.columns:
+                avanco_fisico = df_filtered_projetos[df_filtered_projetos["% Avanço Físico"] > 0]
+                if not avanco_fisico.empty:
+                    ax1.bar(range(len(avanco_fisico)), avanco_fisico["% Avanço Físico"], 
+                           color=COLORS["support1"], alpha=0.7)
+                    ax1.set_title("% Avanço Físico por Projeto")
+                    ax1.set_ylabel("Avanço (%)")
+                    ax1.set_xticks(range(len(avanco_fisico)))
+                    ax1.set_xticklabels([proj[:15] + "..." if len(proj) > 15 else proj 
+                                        for proj in avanco_fisico["Projeto"]], 
+                                       rotation=45, ha="right", fontsize=8)
+
+            # Distribuição de lotes por tipologia
+            if "Tipologia" in df_filtered_projetos.columns and "Lotes" in df_filtered_projetos.columns:
+                lotes_por_tip = df_filtered_projetos.groupby("Tipologia")["Lotes"].sum()
+                if not lotes_por_tip.empty:
+                    ax2.pie(lotes_por_tip.values, labels=lotes_por_tip.index, autopct="%1.1f%%")
+                    ax2.set_title("Distribuição de Lotes por Tipologia")
+
+            # Tempo de obra vs Custo (scatter plot)
+            if "Tempo de Obra" in df_filtered_projetos.columns:
+                tempo_obra = df_filtered_projetos[df_filtered_projetos["Tempo de Obra"] > 0]
+                if not tempo_obra.empty:
+                    ax3.scatter(tempo_obra["Tempo de Obra"], tempo_obra["Custo Fluxo"], 
+                              color=COLORS["support3"], alpha=0.6, s=60)
+                    ax3.set_xlabel("Tempo de Obra (meses)")
+                    ax3.set_ylabel("Custo Fluxo (R$)")
+                    ax3.set_title("Relação Tempo vs Custo")
+                    ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"R$ {x:,.0f}".replace(",", ".")))
+
+            # Saldo restante por etapa
+            if "Etapa" in df_filtered_projetos.columns:
+                saldo_por_etapa = df_filtered_projetos.groupby("Etapa")["Saldo"].sum()
+                saldo_por_etapa = saldo_por_etapa[saldo_por_etapa > 0]
+                if not saldo_por_etapa.empty:
+                    ax4.bar(saldo_por_etapa.index, saldo_por_etapa.values, color=COLORS["support2"])
+                    ax4.set_title("Saldo Restante por Etapa")
+                    ax4.set_ylabel("Saldo (R$)")
+                    ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"R$ {x:,.0f}".replace(",", ".")))
+                    plt.setp(ax4.get_xticklabels(), rotation=45, ha="right")
+
+            plt.tight_layout()
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close()
+
+        # Página 10: Tabela Completa com Todas as Colunas (se solicitado)
+        if not df_filtered_projetos.empty and len(df_filtered_projetos.columns) > 15:
+            # Selecionar todas as colunas principais
+            all_display_columns = [
+                "ID", "Empresa desenvolvedora", "Sócia", "Projeto", "Tipologia", "Cidade", "UF", "Etapa",
+                "Custo Raso Meta", "Custo Fluxo", "Percentual Incorrido do Fluxo%", "ago/25", "set/25", "out/25",
+                "Média dos Próximos Meses", "Saldo", "Índice Ômega", "% Avanço Físico", "%Avanço Financeiro",
+                "Tempo de Obra", "Início Obra", "Fim Obra", "Meses Restantes Pós Out/25", "Lotes"
+            ]
+
+            # Filtrar apenas colunas que existem
+            colunas_existentes_completas = [col for col in all_display_columns if col in df_filtered_projetos.columns]
+            
+            if len(colunas_existentes_completas) > 7:  # Se há muitas colunas, criar tabela extendida
+                df_tabela_completa = df_filtered_projetos[colunas_existentes_completas].copy()
+                
+                # Formatação das colunas
+                currency_cols = ["Custo Raso Meta", "Custo Fluxo", "ago/25", "set/25", "out/25", 
+                               "Média dos Próximos Meses", "Saldo"]
+                for col in currency_cols:
+                    if col in df_tabela_completa.columns:
+                        df_tabela_completa[col] = df_tabela_completa[col].apply(lambda x: format_currency_br(x, False))
+
+                # Formatação de percentuais
+                percent_cols = ["Percentual Incorrido do Fluxo%", "% Avanço Físico", "%Avanço Financeiro"]
+                for col in percent_cols:
+                    if col in df_tabela_completa.columns:
+                        df_tabela_completa[col] = df_tabela_completa[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+
+                # Formatação de datas
+                date_cols = ["Início Obra", "Fim Obra"]
+                for col in date_cols:
+                    if col in df_tabela_completa.columns:
+                        df_tabela_completa[col] = df_tabela_completa[col].apply(
+                            lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) and hasattr(x, 'strftime') else 'N/A'
+                        )
+
+                # Dividir em chunks ainda menores para tabela extendida (15 linhas)
+                chunk_size_extended = 15
+                for chunk_num, start_idx in enumerate(range(0, len(df_tabela_completa), chunk_size_extended)):
+                    end_idx = min(start_idx + chunk_size_extended, len(df_tabela_completa))
+                    chunk_data = df_tabela_completa.iloc[start_idx:end_idx]
+                    
+                    # Dividir colunas em duas tabelas se necessário
+                    mid_col = len(chunk_data.columns) // 2
+                    
+                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8))
+                    fig.suptitle(f"Tabela Completa das Obras - Página {chunk_num + 1}", fontsize=12, fontweight="bold")
+
+                    # Primeira metade das colunas
+                    chunk_data_1 = chunk_data.iloc[:, :mid_col]
+                    table1 = ax1.table(cellText=chunk_data_1.values, colLabels=chunk_data_1.columns,
+                                      cellLoc="center", loc="center")
+                    table1.auto_set_font_size(False)
+                    table1.set_fontsize(6)
+                    table1.scale(1.0, 1.1)
+                    ax1.set_title(f"Colunas 1-{mid_col}", fontsize=10)
+                    ax1.axis("off")
+
+                    # Segunda metade das colunas
+                    if mid_col < len(chunk_data.columns):
+                        chunk_data_2 = chunk_data.iloc[:, mid_col:]
+                        table2 = ax2.table(cellText=chunk_data_2.values, colLabels=chunk_data_2.columns,
+                                          cellLoc="center", loc="center")
+                        table2.auto_set_font_size(False)
+                        table2.set_fontsize(6)
+                        table2.scale(1.0, 1.1)
+                        ax2.set_title(f"Colunas {mid_col+1}-{len(chunk_data.columns)}", fontsize=10)
+                    ax2.axis("off")
+
+                    plt.tight_layout()
+                    pdf.savefig(fig, bbox_inches="tight")
+                    plt.close()
 
     buffer.seek(0)
     return buffer
